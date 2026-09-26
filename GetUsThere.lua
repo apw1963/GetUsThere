@@ -20,6 +20,12 @@ local textSizeStepPercent = 5
 local defaultShowRawCoordinates = true
 local ApplyRawVisibility = nil
 
+local defaultShowMinimapButton = true
+local defaultMinimapButtonAngle = 220
+local showMinimapButtonCheck = nil
+local minimapButton = nil
+local ApplyMinimapButtonState = nil
+
 local defaultRememberWindowPosition = true
 local rememberWindowPositionCheck = nil
 local RestoreSavedWindowPosition = nil
@@ -282,6 +288,24 @@ savedVariablesFrame:SetScript("OnEvent", function(self, event, loadedAddon)
             defaultShowRawCoordinates
     end
 
+    if type(GetUsThereDB.preferences.showMinimapButton) ~= "boolean" then
+        GetUsThereDB.preferences.showMinimapButton =
+            defaultShowMinimapButton
+    end
+
+    local savedMinimapAngle =
+        tonumber(GetUsThereDB.preferences.minimapButtonAngle)
+
+    if not savedMinimapAngle
+        or savedMinimapAngle ~= savedMinimapAngle
+        or savedMinimapAngle == math.huge
+        or savedMinimapAngle == -math.huge then
+        savedMinimapAngle = defaultMinimapButtonAngle
+    end
+
+    GetUsThereDB.preferences.minimapButtonAngle =
+        savedMinimapAngle % 360
+
     if type(GetUsThereDB.preferences.rememberWindowPosition) ~= "boolean" then
         GetUsThereDB.preferences.rememberWindowPosition =
             defaultRememberWindowPosition
@@ -322,6 +346,11 @@ savedVariablesFrame:SetScript("OnEvent", function(self, event, loadedAddon)
             GetUsThereDB.preferences.restoreAfterCombat)
     end
 
+    if showMinimapButtonCheck then
+        showMinimapButtonCheck:SetChecked(
+            GetUsThereDB.preferences.showMinimapButton)
+    end
+
     GetUsThereDB.preferences.textSizePercent =
         ApplyTextAppearance(
             GetUsThereDB.preferences.textSizePercent)
@@ -334,13 +363,17 @@ savedVariablesFrame:SetScript("OnEvent", function(self, event, loadedAddon)
         ApplyRawVisibility()
     end
 
+    if ApplyMinimapButtonState then
+        ApplyMinimapButtonState()
+    end
+
     -- Session-only travel authority and request state must never be persisted here.
     self:UnregisterEvent("ADDON_LOADED")
 end)
 
 local frame = CreateFrame("Frame", "GetUsThereFrame", UIParent)
 frame:SetWidth(560)
-frame:SetHeight(600)
+frame:SetHeight(680)
 frame:SetPoint("CENTER")
 frame:SetBackdrop({
     bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
@@ -775,20 +808,9 @@ optionsButton:SetScript("OnClick", function()
     end
 end)
 
-local searchLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-searchLabel:SetPoint("TOPLEFT", 24, -58)
-searchLabel:SetText("All Destinations")
-
-local searchBox = CreateFrame("EditBox", "GetUsThereSearchBox", frame, "InputBoxTemplate")
-searchBox:SetWidth(380)
-searchBox:SetHeight(24)
-searchBox:SetPoint("TOPLEFT", 24, -78)
-searchBox:SetAutoFocus(false)
-
 local sendButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 sendButton:SetWidth(100)
 sendButton:SetHeight(24)
-sendButton:SetPoint("LEFT", searchBox, "RIGHT", 14, 0)
 sendButton:SetText("Send Us")
 sendButton:Disable()
 
@@ -800,13 +822,28 @@ local categoryTabs = {}
 
 local function SetCategoryTabAppearance(button, isActive)
     local fontString = button:GetFontString()
-    local yOffset = -136
+    local yOffset = button.tabY
 
-    button:Enable()
     button:ClearAllPoints()
 
+    if not button.isAvailable then
+        button:Disable()
+        button:SetHeight(22)
+        button:SetAlpha(0.35)
+        button:SetPoint("TOPLEFT", button.tabX, yOffset)
+        button:UnlockHighlight()
+
+        if fontString then
+            fontString:SetTextColor(0.45, 0.45, 0.45)
+        end
+
+        return
+    end
+
+    button:Enable()
+
     if isActive then
-        yOffset = -132
+        yOffset = button.tabY + 4
         button:SetHeight(26)
         button:SetAlpha(1.0)
         button:SetPoint("TOPLEFT", button.tabX, yOffset)
@@ -827,30 +864,41 @@ local function SetCategoryTabAppearance(button, isActive)
     end
 end
 
-local function CreateCategoryTab(text, scope, x, width)
+local function CreateCategoryTab(text, scope, x, y, width, isAvailable)
     local button =
         CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     button.tabX = x
+    button.tabY = y
     button:SetWidth(width)
     button:SetHeight(22)
-    button:SetPoint("TOPLEFT", x, -136)
+    button:SetPoint("TOPLEFT", x, y)
     button:SetAlpha(0.65)
     button:SetText(text)
     button.searchScope = scope
     button.searchLabel = text
+    button.isAvailable = isAvailable ~= false
     table.insert(categoryTabs, button)
     return button
 end
 
-CreateCategoryTab("Cities", "CITIES", 24, 78)
-CreateCategoryTab("Settlements", "SETTLEMENTS", 106, 96)
-CreateCategoryTab("Dungeons & Raids", "DUNGEONS_RAIDS", 206, 132)
-CreateCategoryTab("Leveling Zones", "LEVELING_ZONES", 342, 118)
+CreateCategoryTab("All Destinations", nil, 24, -136, 120)
+CreateCategoryTab("Cities", "CITIES", 148, -136, 78)
+CreateCategoryTab("Settlements", "SETTLEMENTS", 230, -136, 96)
+CreateCategoryTab("Dungeons & Raids", "DUNGEONS_RAIDS", 330, -136, 132)
+
+CreateCategoryTab("Leveling Zones", "LEVELING_ZONES", 24, -164, 118)
+CreateCategoryTab("Points of Interest", "POINTS_OF_INTEREST", 146, -164, 128)
+
+CreateCategoryTab("World Bosses", "WORLD_BOSSES", 278, -164, 100)
+
+-- Events & Festivals remains visible but disabled until its separately
+-- controlled server-authoritative feature-development phase.
+CreateCategoryTab("Events & Festivals", nil, 382, -164, 136, false)
 
 local categorySearchLabel =
     frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-categorySearchLabel:SetPoint("TOPLEFT", 24, -170)
-categorySearchLabel:SetText("Search Cities")
+categorySearchLabel:SetPoint("TOPLEFT", 24, -202)
+categorySearchLabel:SetText("Search All Destinations")
 
 local categorySearchBox =
     CreateFrame(
@@ -860,11 +908,13 @@ local categorySearchBox =
         "InputBoxTemplate")
 categorySearchBox:SetWidth(380)
 categorySearchBox:SetHeight(24)
-categorySearchBox:SetPoint("TOPLEFT", 24, -190)
+categorySearchBox:SetPoint("TOPLEFT", 24, -222)
 categorySearchBox:SetAutoFocus(false)
 
+sendButton:SetPoint("LEFT", categorySearchBox, "RIGHT", 14, 0)
+
 local resultsLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-resultsLabel:SetPoint("TOPLEFT", 24, -224)
+resultsLabel:SetPoint("TOPLEFT", 24, -256)
 resultsLabel:SetText("Search Results")
 
 local resultsDropDown = CreateFrame(
@@ -872,24 +922,24 @@ local resultsDropDown = CreateFrame(
     "GetUsThereResultsDropDown",
     frame,
     "UIDropDownMenuTemplate")
-resultsDropDown:SetPoint("TOPLEFT", 5, -236)
+resultsDropDown:SetPoint("TOPLEFT", 5, -268)
 UIDropDownMenu_SetWidth(resultsDropDown, 430)
 UIDropDownMenu_SetText(resultsDropDown, "No search yet")
 
 local selected = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-selected:SetPoint("TOPLEFT", 24, -276)
+selected:SetPoint("TOPLEFT", 24, -308)
 selected:SetJustifyH("LEFT")
 selected:SetText("No destination selected.")
 
 local ownerStatus = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-ownerStatus:SetPoint("TOPLEFT", 24, -296)
+ownerStatus:SetPoint("TOPLEFT", 24, -328)
 ownerStatus:SetJustifyH("LEFT")
 ownerStatus:SetTextColor(1, 0.2, 0.2)
 ownerStatus:SetText("")
 ownerStatus:Hide()
 
 local arrivalLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-arrivalLabel:SetPoint("TOPLEFT", 250, -326)
+arrivalLabel:SetPoint("TOPLEFT", 250, -382)
 arrivalLabel:SetText("Arrival")
 arrivalLabel:Hide()
 
@@ -898,17 +948,17 @@ local arrivalDropDown = CreateFrame(
     "GetUsThereArrivalDropDown",
     frame,
     "UIDropDownMenuTemplate")
-arrivalDropDown:SetPoint("TOPLEFT", 228, -336)
+arrivalDropDown:SetPoint("TOPLEFT", 228, -392)
 UIDropDownMenu_SetWidth(arrivalDropDown, 185)
 UIDropDownMenu_SetText(arrivalDropDown, "No arrival choices")
 arrivalDropDown:Hide()
 
 local worldTitle = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-worldTitle:SetPoint("TOPLEFT", 24, -326)
+worldTitle:SetPoint("TOPLEFT", 24, -382)
 worldTitle:SetText("World Coordinates")
 
 local worldCoords = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-worldCoords:SetPoint("TOPLEFT", 24, -348)
+worldCoords:SetPoint("TOPLEFT", 24, -404)
 worldCoords:SetJustifyH("LEFT")
 worldCoords:SetText("Map: --\nX: --\nY: --\nZ: --")
 
@@ -921,7 +971,7 @@ local override = CreateFrame(
     "UIPanelButtonTemplate")
 override:SetWidth(90)
 override:SetHeight(24)
-override:SetPoint("TOPLEFT", 20, -416)
+override:SetPoint("TOPLEFT", 20, -472)
 
 local overrideHelp = frame:CreateFontString(
     nil,
@@ -957,7 +1007,7 @@ UpdateOverrideButtonAppearance()
 local raw = CreateFrame("Frame", nil, frame)
 raw:SetWidth(370)
 raw:SetHeight(140)
-raw:SetPoint("TOPLEFT", 24, -461)
+raw:SetPoint("TOPLEFT", 24, -517)
 raw:Hide()
 
 local warning = raw:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -1119,6 +1169,68 @@ showRawCoordinatesHelp:SetText(
     "Shows the manual coordinate panel when Screw You! is enabled. " ..
     "This does not hide or disable Screw You!, which can also request " ..
     "override travel for searched destinations.")
+
+showMinimapButtonCheck =
+    CreateFrame(
+        "CheckButton",
+        "GetUsThereShowMinimapButtonCheck",
+        displayPanel,
+        "UICheckButtonTemplate")
+
+showMinimapButtonCheck:SetPoint(
+    "TOPLEFT",
+    showRawCoordinatesHelp,
+    "BOTTOMLEFT",
+    -24,
+    -14)
+
+showMinimapButtonCheck:SetChecked(defaultShowMinimapButton)
+
+local showMinimapButtonText =
+    showMinimapButtonCheck:CreateFontString(
+        nil,
+        "OVERLAY",
+        "GameFontHighlight")
+
+showMinimapButtonText:SetPoint(
+    "LEFT",
+    showMinimapButtonCheck,
+    "RIGHT",
+    4,
+    0)
+
+showMinimapButtonText:SetText("Show Minimap Button")
+
+local showMinimapButtonHelp =
+    displayPanel:CreateFontString(
+        nil,
+        "OVERLAY",
+        "GameFontHighlightSmall")
+
+showMinimapButtonHelp:SetPoint(
+    "TOPLEFT",
+    showMinimapButtonCheck,
+    "BOTTOMLEFT",
+    24,
+    -2)
+
+showMinimapButtonHelp:SetWidth(345)
+showMinimapButtonHelp:SetJustifyH("LEFT")
+showMinimapButtonHelp:SetText(
+    "Shows a draggable Get Us There button around the minimap. " ..
+    "Left-click opens or closes the main window.")
+
+showMinimapButtonCheck:SetScript("OnClick", function(self)
+    if type(GetUsThereDB) == "table"
+        and type(GetUsThereDB.preferences) == "table" then
+        GetUsThereDB.preferences.showMinimapButton =
+            self:GetChecked() and true or false
+    end
+
+    if ApplyMinimapButtonState then
+        ApplyMinimapButtonState()
+    end
+end)
 
 rememberWindowPositionCheck =
     CreateFrame(
@@ -1372,6 +1484,191 @@ local function IsRestoreAfterCombatEnabled()
         and GetUsThereDB.preferences.restoreAfterCombat == true
 end
 
+local function ToggleMainWindow()
+    if frame:IsShown() then
+        frame:Hide()
+        return
+    end
+
+    if combatHideActive and IsHideInCombatEnabled() then
+        return
+    end
+
+    frame:Show()
+end
+
+local function GetSavedMinimapAngle()
+    if type(GetUsThereDB) == "table"
+        and type(GetUsThereDB.preferences) == "table" then
+        local angle =
+            tonumber(GetUsThereDB.preferences.minimapButtonAngle)
+
+        if angle
+            and angle == angle
+            and angle ~= math.huge
+            and angle ~= -math.huge then
+            return angle % 360
+        end
+    end
+
+    return defaultMinimapButtonAngle
+end
+
+local function UpdateMinimapButtonPosition()
+    if not minimapButton or not Minimap then
+        return
+    end
+
+    local angle = math.rad(GetSavedMinimapAngle())
+    local radius = 80
+
+    minimapButton:ClearAllPoints()
+    minimapButton:SetPoint(
+        "CENTER",
+        Minimap,
+        "CENTER",
+        math.cos(angle) * radius,
+        math.sin(angle) * radius)
+end
+
+local function SaveMinimapButtonAngleFromCursor(button)
+    if not button or not Minimap then
+        return
+    end
+
+    local minimapX, minimapY = Minimap:GetCenter()
+    local cursorX, cursorY = GetCursorPosition()
+    local scale = Minimap:GetEffectiveScale()
+
+    if not minimapX
+        or not minimapY
+        or not cursorX
+        or not cursorY
+        or not scale
+        or scale <= 0 then
+        return
+    end
+
+    cursorX = cursorX / scale
+    cursorY = cursorY / scale
+
+    local angle =
+        math.deg(
+            math.atan2(
+                cursorY - minimapY,
+                cursorX - minimapX)) % 360
+
+    if type(GetUsThereDB) == "table"
+        and type(GetUsThereDB.preferences) == "table" then
+        GetUsThereDB.preferences.minimapButtonAngle = angle
+    end
+
+    UpdateMinimapButtonPosition()
+end
+
+minimapButton =
+    CreateFrame(
+        "Button",
+        "GetUsThereMinimapButton",
+        Minimap)
+
+minimapButton:SetWidth(31)
+minimapButton:SetHeight(31)
+minimapButton:SetFrameStrata("MEDIUM")
+minimapButton:SetFrameLevel(8)
+minimapButton:SetClampedToScreen(true)
+minimapButton:RegisterForClicks("LeftButtonUp")
+minimapButton:RegisterForDrag("LeftButton")
+
+local minimapIcon =
+    minimapButton:CreateTexture(nil, "ARTWORK")
+
+minimapIcon:SetWidth(20)
+minimapIcon:SetHeight(20)
+minimapIcon:SetPoint(
+    "CENTER",
+    minimapButton,
+    "CENTER",
+    0,
+    0)
+minimapIcon:SetTexture(
+    "Interface\\Icons\\INV_Misc_Map_01")
+minimapIcon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+
+local minimapBorder =
+    minimapButton:CreateTexture(nil, "OVERLAY")
+
+minimapBorder:SetWidth(53)
+minimapBorder:SetHeight(53)
+minimapBorder:SetTexture(
+    "Interface\\Minimap\\MiniMap-TrackingBorder")
+minimapBorder:SetPoint("TOPLEFT")
+
+minimapButton:SetHighlightTexture(
+    "Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+
+minimapButton:SetScript("OnClick", function()
+    ToggleMainWindow()
+end)
+
+minimapButton:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+    GameTooltip:ClearLines()
+    GameTooltip:AddLine("Get Us There", 1, 1, 1)
+    GameTooltip:AddLine(
+        "Left-click: open / close",
+        1,
+        1,
+        1)
+    GameTooltip:AddLine(
+        "Drag: move around minimap",
+        1,
+        1,
+        1)
+    GameTooltip:Show()
+end)
+
+minimapButton:SetScript("OnLeave", function()
+    GameTooltip:Hide()
+end)
+
+minimapButton:SetScript("OnDragStart", function(self)
+    self:SetScript(
+        "OnUpdate",
+        SaveMinimapButtonAngleFromCursor)
+end)
+
+minimapButton:SetScript("OnDragStop", function(self)
+    self:SetScript("OnUpdate", nil)
+    SaveMinimapButtonAngleFromCursor(self)
+end)
+
+ApplyMinimapButtonState = function()
+    local showButton = defaultShowMinimapButton
+
+    if type(GetUsThereDB) == "table"
+        and type(GetUsThereDB.preferences) == "table"
+        and type(
+            GetUsThereDB.preferences.showMinimapButton)
+            == "boolean" then
+        showButton =
+            GetUsThereDB.preferences.showMinimapButton
+    end
+
+    if showMinimapButtonCheck then
+        showMinimapButtonCheck:SetChecked(showButton)
+    end
+
+    if showButton then
+        UpdateMinimapButtonPosition()
+        minimapButton:Show()
+    else
+        minimapButton:Hide()
+    end
+end
+
+ApplyMinimapButtonState()
+
 ApplyRawVisibility = function()
     local showRaw = defaultShowRawCoordinates
 
@@ -1440,7 +1737,7 @@ local pendingTeleportGameTeleId = nil
 local pendingTeleportChoiceId = nil
 local selectedDestination = nil
 local selectedArrivalChoice = nil
-local activeSearchScope = "CITIES"
+local activeSearchScope = nil
 local ClearCuratedSearchStateAfterRawTeleport = nil
 
 local function AllocateRequestId()
@@ -1478,10 +1775,6 @@ local function ShowSelectedDestination(destination)
             destination.levelRestriction.playerLevel,
             destination.levelRestriction.minimumAllowedLevel,
             destination.levelRestriction.recommendedLevel))
-    elseif destination.rivalCapitalFaction then
-        selected:SetText(string.format(
-            "%s - Server error: RIVAL_CAPITAL_BLOCKED",
-            destination.displayName))
     else
         selected:SetText(
             destination.displayName .. " - " .. destination.category)
@@ -1500,6 +1793,7 @@ local function ShowSelectedDestination(destination)
 
         if destination.destinationFactionBlocked then
             ownerStatus:SetText(
+                "Opposing Faction Territory.\n" ..
                 "Enable Screw You! and defy restrictions at your own peril, explorer.")
         else
             ownerStatus:SetText(
@@ -1634,12 +1928,7 @@ UIDropDownMenu_Initialize(resultsDropDown, function(self, level)
         local info = UIDropDownMenu_CreateInfo()
         info.fontObject = dropdownTextFont
 
-        if destination.rivalCapitalFaction then
-            info.text = string.format(
-                "%s - %s | RIVAL_CAPITAL_BLOCKED",
-                destination.displayName,
-                destination.category)
-        elseif destination.levelRestriction then
+        if destination.levelRestriction then
             info.text = string.format(
                 "%s - %s | Level %d; %d+ needed",
                 destination.displayName,
@@ -2100,8 +2389,6 @@ ClearCuratedSearchStateAfterRawTeleport = function()
     CancelQueuedSearch()
     CloseDropDownMenus(1)
 
-    searchBox:SetText("")
-    searchBox:ClearFocus()
     categorySearchBox:SetText("")
     categorySearchBox:ClearFocus()
 
@@ -2301,6 +2588,10 @@ local function SendSelectedDestination()
 end
 
 local function ActivateCategoryTab(button)
+    if not button or not button.isAvailable then
+        return
+    end
+
     CancelQueuedSearch()
     CloseDropDownMenus(1)
 
@@ -2340,15 +2631,6 @@ for index = 1, #categoryTabs do
 end
 
 ActivateCategoryTab(categoryTabs[1])
-
-searchBox:SetMaxLetters(96)
-searchBox:SetScript("OnTextChanged", function(self, userInput)
-    ScheduleAutocomplete(self, nil, userInput)
-end)
-searchBox:SetScript("OnEnterPressed", function(self)
-    self:ClearFocus()
-    SendSearchFromEnter(self, nil)
-end)
 
 categorySearchBox:SetMaxLetters(96)
 categorySearchBox:SetScript("OnTextChanged", function(self, userInput)
@@ -2520,13 +2802,5 @@ end)
 
 SLASH_GETUSTHERE1 = "/gut"
 SlashCmdList["GETUSTHERE"] = function()
-    if frame:IsShown() then
-        frame:Hide()
-    else
-        if combatHideActive and IsHideInCombatEnabled() then
-            return
-        end
-
-        frame:Show()
-    end
+    ToggleMainWindow()
 end
