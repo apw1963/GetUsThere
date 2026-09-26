@@ -35,12 +35,12 @@ to open Get Us There.
 
 Current addon version:
 
-`0.2.0`
+`0.3.0`
 
 This standalone addon is synchronized with the client addon bundled in server
 module commit:
 
-`11f128e5e7911c6e9e4ed17c7b8e11b79c09228f`
+`8b33fe3686532d1c0a30b2cf31d9c0ad872760de`
 
 ## Server module
 
